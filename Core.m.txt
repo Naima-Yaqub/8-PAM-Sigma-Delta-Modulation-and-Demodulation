@@ -1,0 +1,102 @@
+%clearing command window and closing previously opened graphs
+clear;
+clc;
+close all;
+
+%Reading Data from 8-PAM xlsx file%
+original_signal = xlsread('8-PAM.xlsx');
+time_us= original_signal(:,1);
+signal_val= original_signal(:,2);
+
+%First expected figure of the project i.e. ORIGINAL 8-PAM SIGNAL
+%_%
+figure;
+plot(time_us, signal_val,'Color',[0.8500 0.3250 0.0980]); 
+xlabel('Time in micro-seconds', 'FontSize', 14, 'FontWeight', 'bold', 'Color', [0.8500 0.3250 0.0980]);
+ylabel('Amplitude', 'FontSize', 12, 'FontWeight', 'bold','Color',[0.8500 0.3250 0.0980]);
+ylim([-1,1]);
+title('Input 8-PAM Wave');
+%_%
+
+oversampling_ratio =64; %good resolution is achieved when it is 64
+sampling_freq = 1536; %obtained using -> 1/(difference between two samples in 8-PAM xlsx file)
+format long g;
+g=85.3326822916666+(1/sampling_freq); %85.33268229196666 is the last value of column 1 in 8-PAM file
+
+sampling_freq_new = sampling_freq * oversampling_ratio;  % New sampling frequency, basically samples are now closer to each other
+new_time = 0:1/sampling_freq_new:g;  % New time_us vector for oversampled signal
+
+signal = interp1(time_us,signal_val, new_time,"next");
+%signal=resample(signal_val,1,oversampling_ratio); %rms error is reduced greatly when using this but gives error sometimes
+integrator_state = zeros(size(signal));
+adc_comparator = zeros(size(signal)); 
+dac_output = zeros(size(signal)); 
+error=zeros(size(signal));
+initial_state=0;
+
+for n = 2 :length(signal) 
+  error(n) = signal(n) - dac_output(n-1)+error(n-1);
+
+   
+    if (error(n) >= 0)
+       adc_comparator(n) = 1;
+    
+    else 
+        adc_comparator(n) =0;
+
+    end
+   
+if ( adc_comparator(n) == 1)
+    dac_output(n)=1;
+else
+    dac_output(n)=-1;
+end
+end
+adc_comparator1=adc_comparator-mean(adc_comparator);
+
+%______Saving ADC Output in .mat file________%
+%constructing the filename using the first names of the group members
+filename= "AnserZuhaNaimaInput";
+save(filename, 'adc_comparator1');
+%_________________________________________%
+
+
+filter_order =1;
+
+adc_comparator2 = interp1(new_time, adc_comparator, time_us, "next");
+%adc_comparator2 = resample(adc_comparator1, 1, oversampling_ratio,1);
+%->  [b,a] = butter(n,Wn)
+[b, a] = butter(filter_order, 767/sampling_freq/2); 
+dac_output1 = filter(b, a, adc_comparator2); 
+dac_output1 = 2 * dac_output1 - 1;
+
+%______Saving DAC Output in .mat file________%
+% Constructing the filename using the first names of the group members
+filename= "AnserZuhaNaimaOutput";
+save(filename, 'dac_output1');
+%____________________________________________%
+
+
+%Second expected figure of the project i.e. ADC using sigma-delta modulator
+%_%
+figure;
+plot(new_time, adc_comparator,'Color',[0, 0.4470, 0.7410]);
+xlabel('Time in micro-seconds', 'FontSize', 14, 'FontWeight', 'bold','Color',[0, 0.4470, 0.7410]);
+ylabel('Amplitude', 'FontSize', 14, 'FontWeight', 'bold','Color',[0, 0.4470, 0.7410]);
+title('ADC Output');
+%_%
+
+
+%Third expected figure of the project i.e. DAC output
+%_%
+figure;
+plot(time_us,dac_output1,'Color',[0.6350, 0.0780, 0.1840]	);
+xlabel('Time in micro-seconds', 'FontSize',12, 'FontWeight', 'bold','Color',[0.6350, 0.0780, 0.1840]	);
+ylim([-1,1]);
+ylabel('Amplitude', 'FontSize',12, 'FontWeight', 'bold','Color',[0.6350, 0.0780, 0.1840]	);
+title('DAC Output');
+%_%
+
+rmserror = rms(signal_val-dac_output1);
+disp("Rms error is")
+disp(rmserror)
